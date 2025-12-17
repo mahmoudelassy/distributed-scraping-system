@@ -1,7 +1,6 @@
 package contracts
 
 type HTMLParser interface {
-	Parse(page HTMLPage)
-	GetElement() HTMLElement
-	GetAllElements() []HTMLElement
+	GetElement(selector string) HTMLElement
+	GetAllElements(selector string) []HTMLElement
 }
