@@ -2,7 +2,7 @@ package goquery
 
 import (
 	"github.com/PuerkitoBio/goquery"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/contracts"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
 )
 
 type Element struct {
