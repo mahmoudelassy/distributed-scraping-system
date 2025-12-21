@@ -19,18 +19,18 @@ func (s *Scraper) initDocument(url string) (contracts.Document, error) {
 	return doc, nil
 }
 
-func (s *Scraper) Scrape(url string, queries []Query) ([]Result, error) {
+func (s *Scraper) Scrape(url string, queries []Query) ([]*Result, error) {
 
 	doc, err := s.initDocument(url)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]Result, 0, len(queries))
+	results := make([]*Result, 0, len(queries))
 
 	for _, query := range queries {
 		result := query.Select(doc)
-		results = append(results, *result)
+		results = append(results, result)
 	}
 
 	return results, nil

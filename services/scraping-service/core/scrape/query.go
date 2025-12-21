@@ -12,10 +12,17 @@ func (q *Query) Select(document contracts.Document) *Result {
 		Query:    q,
 		Elements: nil,
 	}
+
 	if q.All {
 		result.Elements = document.GetAll(q.Selector)
-	} else {
-		result.Elements = []contracts.HTMLElement{document.Get(q.Selector)}
+		return &result
 	}
+
+	el, err := document.Get(q.Selector)
+	if err != nil {
+		return &result
+	}
+
+	result.Elements = append(result.Elements, el)
 	return &result
 }

@@ -14,18 +14,8 @@ type ChromeDPFetcher struct {
 	timeout      time.Duration
 }
 
-func NewChromeDPFetcher(headless bool, timeout time.Duration) (*ChromeDPFetcher, error) {
-	chromedp.ExecPath("/snap/bin/chromium")
-	opts := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", headless),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-	)
-
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-
+func NewChromeDPFetcherRemote(wsURL string, timeout time.Duration) (*ChromeDPFetcher, error) {
+	allocCtx, cancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
 	return &ChromeDPFetcher{
 		allocatorCtx: allocCtx,
 		cancel:       cancel,
