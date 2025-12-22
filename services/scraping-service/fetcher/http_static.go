@@ -12,13 +12,13 @@ type HTTPStaticFetcher struct {
 	Client *http.Client
 }
 
-func (fetcher *HTTPStaticFetcher) Fetch(url string) (*html.Page, error) {
+func (f *HTTPStaticFetcher) Fetch(url string) (*html.Page, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := fetcher.Client.Do(req)
+	res, err := f.Client.Do(req)
 	if err != nil {
 		return nil, err
 	}

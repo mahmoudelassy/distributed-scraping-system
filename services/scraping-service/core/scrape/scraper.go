@@ -1,27 +1,43 @@
 package scrape
 
-import "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
+import (
+	"time"
+
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/html"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/utils"
+)
 
 type Scraper struct {
 	Parser  contracts.HTMLParser
 	Fetcher contracts.HTMLFetcher
 }
 
-func (s *Scraper) initDocument(url string) (contracts.Document, error) {
-	page, ferr := s.Fetcher.Fetch(url)
+func (s *Scraper) initDocument(url string, retries int, delay time.Duration) (contracts.Document, error) {
+
+	page, ferr := utils.Retry(func() (*html.Page, error) {
+		return s.Fetcher.Fetch(url)
+	}, retries, delay)
+
 	if ferr != nil {
 		return nil, ferr
 	}
-	doc, perr := s.Parser.Parse(page)
+
+	doc, perr := utils.Retry(func() (contracts.Document, error) {
+		return s.Parser.Parse(page)
+	}, retries, delay)
+
 	if perr != nil {
 		return nil, perr
 	}
+
 	return doc, nil
 }
 
 func (s *Scraper) Scrape(url string, queries []Query) ([]*Result, error) {
 
-	doc, err := s.initDocument(url)
+	doc, err := s.initDocument(url, 3, 200)
+
 	if err != nil {
 		return nil, err
 	}
