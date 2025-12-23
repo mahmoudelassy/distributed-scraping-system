@@ -10,7 +10,7 @@ func Retry[T any](fn func() (T, error), retries int, delay time.Duration) (T, er
 	var err error
 	for attempt := 1; attempt <= retries; attempt++ {
 		result, err = fn()
-		if err != nil {
+		if err == nil {
 			return result, nil
 		}
 		fmt.Printf("Attempt %d failed: %v\n", attempt, err)
