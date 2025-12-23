@@ -2,6 +2,7 @@ package scrape
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
@@ -21,7 +22,7 @@ func (s *Scraper) initDocument(ctx context.Context, url string, retries int, del
 	}, retries, delay)
 
 	if ferr != nil {
-		return nil, ferr
+		return nil, fmt.Errorf("failed to fetch document: %w", ferr)
 	}
 
 	doc, perr := utils.Retry(func() (contracts.Document, error) {
@@ -29,7 +30,7 @@ func (s *Scraper) initDocument(ctx context.Context, url string, retries int, del
 	}, retries, delay)
 
 	if perr != nil {
-		return nil, perr
+		return nil, fmt.Errorf("failed to parse document: %w", perr)
 	}
 
 	return doc, nil
