@@ -1,6 +1,7 @@
 package scrape
 
 import (
+	"context"
 	"time"
 
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
@@ -13,7 +14,7 @@ type Scraper struct {
 	Fetcher contracts.HTMLFetcher
 }
 
-func (s *Scraper) initDocument(url string, retries int, delay time.Duration) (contracts.Document, error) {
+func (s *Scraper) initDocument(ctx context.Context, url string, retries int, delay time.Duration) (contracts.Document, error) {
 
 	page, ferr := utils.Retry(func() (*html.Page, error) {
 		return s.Fetcher.Fetch(url)
@@ -34,9 +35,9 @@ func (s *Scraper) initDocument(url string, retries int, delay time.Duration) (co
 	return doc, nil
 }
 
-func (s *Scraper) Scrape(url string, queries []Query) ([]*Result, error) {
+func (s *Scraper) Scrape(ctx context.Context, url string, queries []Query) ([]*Result, error) {
 
-	doc, err := s.initDocument(url, 3, 200)
+	doc, err := s.initDocument(ctx, url, 3, 200)
 
 	if err != nil {
 		return nil, err
