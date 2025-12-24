@@ -5,14 +5,14 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/html"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 )
 
 type HTTPStaticFetcher struct {
 	Client *http.Client
 }
 
-func (f *HTTPStaticFetcher) Fetch(url string) (*html.Page, error) {
+func (f *HTTPStaticFetcher) Fetch(url string) (*domain.Page, error) {
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -35,7 +35,7 @@ func (f *HTTPStaticFetcher) Fetch(url string) (*html.Page, error) {
 
 	s := string(body)
 
-	return &html.Page{
+	return &domain.Page{
 		URL:    url,
 		Source: &s,
 	}, nil

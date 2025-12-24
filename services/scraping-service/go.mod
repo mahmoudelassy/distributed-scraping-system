@@ -7,6 +7,8 @@ require (
 	github.com/chromedp/chromedp v0.14.2
 )
 
+require go.uber.org/multierr v1.10.0 // indirect
+
 require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
@@ -15,6 +17,7 @@ require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
+	go.uber.org/zap v1.27.1
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 )
