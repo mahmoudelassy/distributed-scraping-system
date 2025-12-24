@@ -1,4 +1,4 @@
-package html
+package domain
 
 type Page struct {
 	URL    string

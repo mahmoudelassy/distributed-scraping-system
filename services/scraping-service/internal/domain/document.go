@@ -1,4 +1,4 @@
-package contracts
+package domain
 
 type Document interface {
 	Get(selector string) (HTMLElement, error)

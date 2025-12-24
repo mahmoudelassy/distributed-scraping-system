@@ -1,4 +1,4 @@
-package contracts
+package domain
 
 type Attributes = map[string]string
 

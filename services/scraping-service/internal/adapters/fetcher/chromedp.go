@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/html"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 )
 
 type ChromeDPFetcher struct {
@@ -23,7 +23,7 @@ func NewChromeDPFetcherRemote(wsURL string, timeout time.Duration) (*ChromeDPFet
 	}, nil
 }
 
-func (f *ChromeDPFetcher) Fetch(url string) (*html.Page, error) {
+func (f *ChromeDPFetcher) Fetch(url string) (*domain.Page, error) {
 	ctx, cancel := chromedp.NewContext(f.allocatorCtx)
 	defer cancel()
 
@@ -42,7 +42,7 @@ func (f *ChromeDPFetcher) Fetch(url string) (*html.Page, error) {
 		return nil, err
 	}
 
-	return &html.Page{
+	return &domain.Page{
 		URL:    url,
 		Source: &source,
 	}, nil

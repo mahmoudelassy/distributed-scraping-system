@@ -1,13 +1,12 @@
-package scrape
-
-import "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/contracts"
+package domain
 
 type Query struct {
 	Selector string
+	Label    string
 	All      bool
 }
 
-func (q *Query) Select(document contracts.Document) *Result {
+func (q *Query) Select(document Document) *Result {
 	result := Result{
 		Query:    q,
 		Elements: nil,
