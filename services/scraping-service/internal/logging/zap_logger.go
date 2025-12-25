@@ -18,7 +18,11 @@ func NewZapLogger() (*ZapLogger, error) {
 	cfg.EncoderConfig.MessageKey = "msg"
 	cfg.EncoderConfig.CallerKey = "caller"
 
-	logger, err := cfg.Build()
+	logger, err := cfg.Build(
+		zap.AddCaller(),
+		zap.AddCallerSkip(1),
+	)
+
 	if err != nil {
 		return nil, err
 	}
