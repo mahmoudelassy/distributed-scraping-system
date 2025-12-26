@@ -19,10 +19,13 @@ func (d *Document) Get(selector string) (domain.HTMLElement, error) {
 	return NewElement(el), nil
 }
 
-func (d *Document) GetAll(selector string) []domain.HTMLElement {
+func (d *Document) GetAll(selector string) ([]domain.HTMLElement, error) {
 	elements := make([]domain.HTMLElement, 0)
 	d.document.Find(selector).Each(func(i int, s *goquery.Selection) {
 		elements = append(elements, NewElement(s))
 	})
-	return elements
+	if len(elements) == 0 {
+		return nil, fmt.Errorf("elements not found: %s", selector)
+	}
+	return elements, nil
 }
