@@ -1,0 +1,821 @@
+----- Start of ./internal/adapters/parser/goquery/element.go -----
+package goquery
+
+import (
+	"github.com/PuerkitoBio/goquery"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+)
+
+type Element struct {
+	Attrs domain.Attributes
+	Text  string
+}
+
+func NewElement(selectedElement *goquery.Selection) domain.HTMLElement {
+	attrs := make(domain.Attributes)
+	if len(selectedElement.Nodes) > 0 {
+		for _, attr := range selectedElement.Nodes[0].Attr {
+			attrs[attr.Key] = attr.Val
+		}
+	}
+	text := selectedElement.Text()
+
+	return &Element{
+		Attrs: attrs,
+		Text:  text,
+	}
+}
+
+func (el *Element) GetText() string {
+	return el.Text
+}
+
+func (el *Element) GetAttributes() domain.Attributes {
+	return el.Attrs
+}
+----- End of ./internal/adapters/parser/goquery/element.go -----
+
+----- Start of ./internal/adapters/parser/goquery/document.go -----
+package goquery
+
+import (
+	"fmt"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+)
+
+type Document struct {
+	document *goquery.Document
+}
+
+func (d *Document) Get(selector string) (domain.HTMLElement, error) {
+	el := d.document.Find(selector).First()
+	if el.Length() == 0 {
+		return nil, fmt.Errorf("element not found: %s", selector)
+	}
+	return NewElement(el), nil
+}
+
+func (d *Document) GetAll(selector string) []domain.HTMLElement {
+	elements := make([]domain.HTMLElement, 0)
+	d.document.Find(selector).Each(func(i int, s *goquery.Selection) {
+		elements = append(elements, NewElement(s))
+	})
+	return elements
+}
+----- End of ./internal/adapters/parser/goquery/document.go -----
+
+----- Start of ./internal/adapters/parser/goquery/parser.go -----
+package goquery
+
+import (
+	"strings"
+
+	"github.com/PuerkitoBio/goquery"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+)
+
+type Parser struct{}
+
+func (p *Parser) Parse(page *domain.Page) (domain.Document, error) {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(*page.Source))
+	if err != nil {
+		return nil, err
+	}
+	return &Document{
+		document: doc,
+	}, nil
+}
+----- End of ./internal/adapters/parser/goquery/parser.go -----
+
+----- Start of ./internal/adapters/fetcher/chromedp.go -----
+package fetcher
+
+import (
+	"context"
+	"time"
+
+	"github.com/chromedp/chromedp"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+)
+
+type ChromeDPFetcher struct {
+	allocatorCtx context.Context
+	cancel       context.CancelFunc
+	timeout      time.Duration
+}
+
+func NewChromeDPFetcherRemote(wsURL string, timeout time.Duration) (*ChromeDPFetcher, error) {
+	allocCtx, cancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
+	return &ChromeDPFetcher{
+		allocatorCtx: allocCtx,
+		cancel:       cancel,
+		timeout:      timeout,
+	}, nil
+}
+
+func (f *ChromeDPFetcher) Fetch(url string) (*domain.Page, error) {
+	ctx, cancel := chromedp.NewContext(f.allocatorCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, f.timeout)
+	defer cancel()
+
+	var source string
+
+	err := chromedp.Run(
+		ctx,
+		chromedp.Navigate(url),
+		chromedp.WaitReady("body", chromedp.ByQuery),
+		chromedp.OuterHTML("html", &source, chromedp.ByQuery),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &domain.Page{
+		URL:    url,
+		Source: &source,
+	}, nil
+}
+----- End of ./internal/adapters/fetcher/chromedp.go -----
+
+----- Start of ./internal/adapters/fetcher/http_static.go -----
+package fetcher
+
+import (
+	"fmt"
+	"io"
+	"net/http"
+
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+)
+
+type HTTPStaticFetcher struct {
+	Client *http.Client
+}
+
+func (f *HTTPStaticFetcher) Fetch(url string) (*domain.Page, error) {
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := f.Client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status: %d", res.StatusCode)
+	}
+
+	body, err := io.ReadAll(res.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	s := string(body)
+
+	return &domain.Page{
+		URL:    url,
+		Source: &s,
+	}, nil
+}
+----- End of ./internal/adapters/fetcher/http_static.go -----
+
+----- Start of ./internal/contracts/html_parser.go -----
+package contracts
+
+import "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+
+type HTMLParser interface {
+	Parse(page *domain.Page) (domain.Document, error)
+}
+----- End of ./internal/contracts/html_parser.go -----
+
+----- Start of ./internal/contracts/html_fetcher.go -----
+package contracts
+
+import "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+
+type HTMLFetcher interface {
+	Fetch(url string) (*domain.Page, error)
+}
+----- End of ./internal/contracts/html_fetcher.go -----
+
+----- Start of ./internal/logging/logger.go -----
+package logging
+
+type Field struct {
+	Key   string
+	Value any
+}
+
+type Logger interface {
+	Info(msg string, fields ...Field)
+	Error(msg string, fields ...Field)
+	Warn(msg string, fields ...Field)
+}
+----- End of ./internal/logging/logger.go -----
+
+----- Start of ./internal/logging/zap_logger.go -----
+package logging
+
+import (
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+)
+
+type ZapLogger struct {
+	l *zap.Logger
+}
+
+func NewZapLogger() (*ZapLogger, error) {
+	cfg := zap.NewDevelopmentConfig()
+
+	cfg.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	cfg.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	cfg.EncoderConfig.TimeKey = "ts"
+	cfg.EncoderConfig.MessageKey = "msg"
+	cfg.EncoderConfig.CallerKey = "caller"
+
+	logger, err := cfg.Build(
+		zap.AddCaller(),
+		zap.AddCallerSkip(1), // 👈 THIS IS THE FIX
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &ZapLogger{l: logger}, nil
+}
+
+func (z *ZapLogger) Info(msg string, fields ...Field) {
+	z.l.Info(msg, toZap(fields)...)
+}
+
+func (z *ZapLogger) Error(msg string, fields ...Field) {
+	z.l.Error(msg, toZap(fields)...)
+}
+
+func (z *ZapLogger) Warn(msg string, fields ...Field) {
+	z.l.Warn(msg, toZap(fields)...)
+}
+
+func toZap(fields []Field) []zap.Field {
+	zf := make([]zap.Field, 0, len(fields))
+	for _, f := range fields {
+		zf = append(zf, zap.Any(f.Key, f.Value))
+	}
+	return zf
+}
+----- End of ./internal/logging/zap_logger.go -----
+
+----- Start of ./internal/utils/retry.go -----
+package utils
+
+import (
+	"time"
+)
+
+func Retry[T any](
+	fn func() (T, error),
+	retries int,
+	delay time.Duration,
+) (T, error) {
+	var result T
+	var err error
+
+	for attempt := 1; attempt <= retries; attempt++ {
+		result, err = fn()
+		if err == nil {
+			return result, nil
+		}
+		time.Sleep(delay)
+	}
+
+	return result, err
+}
+----- End of ./internal/utils/retry.go -----
+
+----- Start of ./internal/worker/validator.go -----
+package worker
+
+import (
+	"fmt"
+
+	"github.com/go-playground/validator/v10"
+)
+
+// WorkerValidator holds the validator instance
+type WorkerValidator struct {
+	validator *validator.Validate
+}
+
+// NewWorkerValidator creates a new validator with custom rules registered
+func NewWorkerValidator() *WorkerValidator {
+	v := validator.New()
+
+	// Custom validation for PageType
+	v.RegisterValidation("page_type", func(fl validator.FieldLevel) bool {
+		val := fl.Field().String()
+		return val == "static" || val == "dynamic"
+	})
+
+	return &WorkerValidator{validator: v}
+}
+
+func (wv *WorkerValidator) ValidateJob(job Job) error {
+	err := wv.validator.Struct(job)
+	if err != nil {
+		for _, e := range err.(validator.ValidationErrors) {
+			fmt.Printf("Field '%s' failed validation rule '%s'\n", e.Field(), e.Tag())
+		}
+		return err
+	}
+	return nil
+}
+----- End of ./internal/worker/validator.go -----
+
+----- Start of ./internal/worker/job.go -----
+package worker
+
+import "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+
+type JobMetadata struct {
+	JobID         string `json:"job_id" validate:"required"`
+	UserID        string `json:"user_id" validate:"required"`
+	CorrelationID string `json:"correlation_id" validate:"required"`
+}
+
+type Job struct {
+	Metadata   JobMetadata    `json:"metadata" validate:"required,dive"`
+	URL        string         `json:"url" validate:"required,url"`
+	PageType   string         `json:"page_type" validate:"required,page_type"` // custom validator
+	GroupLabel string         `json:"group_label" validate:"required"`
+	Queries    []domain.Query `json:"queries" validate:"required,min=1,dive"`
+}
+----- End of ./internal/worker/job.go -----
+
+----- Start of ./internal/worker/worker.go -----
+package worker
+
+import (
+	"context"
+
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/contracts"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
+)
+
+type Worker struct {
+	scraper   *scraper.Scraper
+	logger    logging.Logger
+	fetchers  map[string]*contracts.HTMLFetcher
+	validator *WorkerValidator
+}
+
+func NewWorker() *Worker {
+
+}
+
+func (w *Worker) ProcessJob(ctx context.Context, job Job) error {
+
+	w.logger.Info("Processing job", logging.Field{
+		Key:   "job",
+		Value: job,
+	})
+
+	if err := w.validator.ValidateJob(job); err != nil {
+		w.logger.Error("Job validation failed", logging.Field{
+			Key:   "error",
+			Value: err,
+		})
+		return err
+	}
+	ctx = context.WithValue(ctx, ctxmeta.JobIDKey, job.Metadata.JobID)
+	ctx = context.WithValue(ctx, ctxmeta.UserIDKey, job.Metadata.UserID)
+	ctx = context.WithValue(ctx, ctxmeta.CorrelationIDKey, job.Metadata.CorrelationID)
+	results, err := w.scraper.Scrape(ctx, job.URL, job.Queries, nil)
+	return nil
+}
+----- End of ./internal/worker/worker.go -----
+
+----- Start of ./internal/domain/page.go -----
+package domain
+
+type Page struct {
+	URL    string
+	Source *string
+}
+----- End of ./internal/domain/page.go -----
+
+----- Start of ./internal/domain/document.go -----
+package domain
+
+type Document interface {
+	Get(selector string) (HTMLElement, error)
+	GetAll(selector string) []HTMLElement
+}
+----- End of ./internal/domain/document.go -----
+
+----- Start of ./internal/domain/result.go -----
+package domain
+
+type Result struct {
+	Query    *Query
+	Elements []HTMLElement
+}
+----- End of ./internal/domain/result.go -----
+
+----- Start of ./internal/domain/error.go -----
+package domain
+
+type ScraperError struct {
+	Stage string
+	URL   string
+	Err   error
+}
+
+func (e *ScraperError) Error() string { return e.Stage + " error for " + e.URL + ": " + e.Err.Error() }
+func (e *ScraperError) Unwrap() error { return e.Err }
+----- End of ./internal/domain/error.go -----
+
+----- Start of ./internal/domain/html_element.go -----
+package domain
+
+type Attributes = map[string]string
+
+type HTMLElement interface {
+	GetText() string
+	GetAttributes() Attributes
+}
+----- End of ./internal/domain/html_element.go -----
+
+----- Start of ./internal/domain/query.go -----
+package domain
+
+type Query struct {
+	Selector string `json:"selector" validate:"required"`
+	Label    string `json:"label" validate:"required"`
+	All      bool   `json:"all" validate:"required"`
+}
+
+func (q *Query) Select(document Document) *Result {
+	result := Result{
+		Query:    q,
+		Elements: nil,
+	}
+
+	if q.All {
+		result.Elements = document.GetAll(q.Selector)
+		return &result
+	}
+
+	el, err := document.Get(q.Selector)
+	if err != nil {
+		return &result
+	}
+
+	result.Elements = append(result.Elements, el)
+	return &result
+}
+----- End of ./internal/domain/query.go -----
+
+----- Start of ./internal/scraper/ctxmeta/ctxmeta.go -----
+package ctxmeta
+
+import "context"
+
+type key string
+
+const (
+	JobIDKey         key = "job_id"
+	UserIDKey        key = "user_id"
+	CorrelationIDKey key = "correlation_id"
+)
+
+func WithJobMetadata(
+	ctx context.Context,
+	jobID, userID, correlationID string,
+) context.Context {
+	ctx = context.WithValue(ctx, JobIDKey, jobID)
+	ctx = context.WithValue(ctx, UserIDKey, userID)
+	ctx = context.WithValue(ctx, CorrelationIDKey, correlationID)
+	return ctx
+}
+
+func FromContext(ctx context.Context) map[string]interface{} {
+	meta := map[string]interface{}{}
+
+	if v := ctx.Value(JobIDKey); v != nil {
+		meta["job_id"] = v
+	}
+	if v := ctx.Value(UserIDKey); v != nil {
+		meta["user_id"] = v
+	}
+	if v := ctx.Value(CorrelationIDKey); v != nil {
+		meta["correlation_id"] = v
+	}
+
+	return meta
+}
+----- End of ./internal/scraper/ctxmeta/ctxmeta.go -----
+
+----- Start of ./internal/scraper/scraper.go -----
+package scraper
+
+import (
+	"context"
+	"time"
+
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/contracts"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/utils"
+)
+
+type Scraper struct {
+	Parser  contracts.HTMLParser
+	Fetcher contracts.HTMLFetcher
+	Logger  logging.Logger
+}
+
+type ScraperOptions struct {
+	Retries int
+	Delay   time.Duration
+}
+
+func (s *Scraper) initDocument(ctx context.Context, url string, opts ScraperOptions) (domain.Document, error) {
+
+	meta := ctxmeta.FromContext(ctx)
+	meta["url"] = url
+
+	s.Logger.Info(
+		"starting fetch",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	page, ferr := utils.Retry(func() (*domain.Page, error) {
+		return s.Fetcher.Fetch(url)
+	}, opts.Retries, opts.Delay)
+
+	if ferr != nil {
+		s.Logger.Error(
+			"failed to fetch URL",
+			logging.Field{Key: "meta", Value: meta},
+			logging.Field{Key: "error", Value: ferr},
+		)
+		return nil, &domain.ScraperError{Stage: "fetch", Err: ferr}
+	}
+
+	s.Logger.Info(
+		"successfully fetched URL",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	doc, perr := utils.Retry(func() (domain.Document, error) {
+		return s.Parser.Parse(page)
+	}, opts.Retries, opts.Delay)
+
+	if perr != nil {
+		s.Logger.Error(
+			"failed to parse document",
+			logging.Field{Key: "meta", Value: meta},
+			logging.Field{Key: "error", Value: perr},
+		)
+		return nil, &domain.ScraperError{Stage: "parse", Err: perr}
+	}
+
+	s.Logger.Info(
+		"successfully parsed document",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	return doc, nil
+}
+
+func (s *Scraper) Scrape(ctx context.Context, url string, queries []domain.Query, opts *ScraperOptions) ([]*domain.Result, error) {
+	if opts == nil {
+		opts = DefaultScraperOptions()
+	}
+
+	meta := ctxmeta.FromContext(ctx)
+	meta["url"] = url
+	meta["num_queries"] = len(queries)
+
+	s.Logger.Info(
+		"starting scrape",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	doc, err := s.initDocument(ctx, url, *opts)
+	if err != nil {
+		s.Logger.Error(
+			"scrape failed",
+			logging.Field{Key: "meta", Value: meta},
+			logging.Field{Key: "error", Value: err},
+		)
+		return nil, err
+	}
+
+	results := s.executeQueries(ctx, doc, queries)
+
+	s.Logger.Info(
+		"scrape completed",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	return results, nil
+}
+
+func (s *Scraper) executeQueries(
+	ctx context.Context,
+	doc domain.Document,
+	queries []domain.Query,
+) []*domain.Result {
+
+	results := make([]*domain.Result, 0, len(queries))
+	meta := ctxmeta.FromContext(ctx)
+
+	for _, query := range queries {
+		result := query.Select(doc)
+		results = append(results, result)
+
+		s.Logger.Info(
+			"query executed",
+			logging.Field{Key: "selector", Value: query.Selector},
+			logging.Field{Key: "label", Value: query.Label},
+			logging.Field{Key: "elements_found", Value: len(result.Elements)},
+			logging.Field{Key: "meta", Value: meta},
+		)
+	}
+
+	return results
+}
+
+func DefaultScraperOptions() *ScraperOptions {
+	return &ScraperOptions{
+		Retries: 3,
+		Delay:   200 * time.Millisecond,
+	}
+}
+----- End of ./internal/scraper/scraper.go -----
+
+----- Start of ./go.sum -----
+github.com/PuerkitoBio/goquery v1.11.0 h1:jZ7pwMQXIITcUXNH83LLk+txlaEy6NVOfTuP43xxfqw=
+github.com/PuerkitoBio/goquery v1.11.0/go.mod h1:wQHgxUOU3JGuj3oD/QFfxUdlzW6xPHfqyHre6VMY4DQ=
+github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kktS1LM=
+github.com/andybalholm/cascadia v1.3.3/go.mod h1:xNd9bqTn98Ln4DwST8/nG+H0yuB8Hmgu1YHNnWw0GeA=
+github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 h1:UQ4AU+BGti3Sy/aLU8KVseYKNALcX9UXY6DfpwQ6J8E=
+github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327/go.mod h1:NItd7aLkcfOA/dcMXvl8p1u+lQqioRMq/SqDp71Pb/k=
+github.com/chromedp/chromedp v0.14.2 h1:r3b/WtwM50RsBZHMUm9fsNhhzRStTHrKdr2zmwbZSzM=
+github.com/chromedp/chromedp v0.14.2/go.mod h1:rHzAv60xDE7VNy/MYtTUrYreSc0ujt2O1/C3bzctYBo=
+github.com/chromedp/sysutil v1.1.0 h1:PUFNv5EcprjqXZD9nJb9b/c9ibAbxiYo4exNWZyipwM=
+github.com/chromedp/sysutil v1.1.0/go.mod h1:WiThHUdltqCNKGc4gaU50XgYjwjYIhKWoHGPTUfWTJ8=
+github.com/gabriel-vasile/mimetype v1.4.12 h1:e9hWvmLYvtp846tLHam2o++qitpguFiYCKbn0w9jyqw=
+github.com/gabriel-vasile/mimetype v1.4.12/go.mod h1:d+9Oxyo1wTzWdyVUPMmXFvp4F9tea18J8ufA774AB3s=
+github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 h1:iizUGZ9pEquQS5jTGkh4AqeeHCMbfbjeb0zMt0aEFzs=
+github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2/go.mod h1:TiCD2a1pcmjd7YnhGH0f/zKNcCD06B029pHhzV23c2M=
+github.com/go-playground/locales v0.14.1 h1:EWaQ/wswjilfKLTECiXz7Rh+3BjFhfDFKv/oXslEjJA=
+github.com/go-playground/locales v0.14.1/go.mod h1:hxrqLVvrK65+Rwrd5Fc6F2O76J/NuW9t0sjnWqG1slY=
+github.com/go-playground/universal-translator v0.18.1 h1:Bcnm0ZwsGyWbCzImXv+pAJnYK9S473LQFuzCbDbfSFY=
+github.com/go-playground/universal-translator v0.18.1/go.mod h1:xekY+UJKNuX9WP91TpwSH2VMlDf28Uj24BCp08ZFTUY=
+github.com/go-playground/validator/v10 v10.30.1 h1:f3zDSN/zOma+w6+1Wswgd9fLkdwy06ntQJp0BBvFG0w=
+github.com/go-playground/validator/v10 v10.30.1/go.mod h1:oSuBIQzuJxL//3MelwSLD5hc2Tu889bF0Idm9Dg26cM=
+github.com/gobwas/httphead v0.1.0 h1:exrUm0f4YX0L7EBwZHuCF4GDp8aJfVeBrlLQrs6NqWU=
+github.com/gobwas/httphead v0.1.0/go.mod h1:O/RXo79gxV8G+RqlR/otEwx4Q36zl9rqC5u12GKvMCM=
+github.com/gobwas/pool v0.2.1 h1:xfeeEhW7pwmX8nuLVlqbzVc7udMDrwetjEv+TZIz1og=
+github.com/gobwas/pool v0.2.1/go.mod h1:q8bcK0KcYlCgd9e7WYLm9LpyS+YeLd8JVDW6WezmKEw=
+github.com/gobwas/ws v1.4.0 h1:CTaoG1tojrh4ucGPcoJFiAQUAsEWekEWvLy7GsVNqGs=
+github.com/gobwas/ws v1.4.0/go.mod h1:G3gNqMNtPppf5XUz7O4shetPpcZ1VJ7zt18dlUeakrc=
+github.com/google/go-cmp v0.6.0/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/ledongthuc/pdf v0.0.0-20220302134840-0c2507a12d80 h1:6Yzfa6GP0rIo/kULo2bwGEkFvCePZ3qHDDTC3/J9Swo=
+github.com/ledongthuc/pdf v0.0.0-20220302134840-0c2507a12d80/go.mod h1:imJHygn/1yfhB7XSJJKlFZKl/J+dCPAknuiaGOshXAs=
+github.com/leodido/go-urn v1.4.0 h1:WT9HwE9SGECu3lg4d/dIA+jxlljEa1/ffXKmRjqdmIQ=
+github.com/leodido/go-urn v1.4.0/go.mod h1:bvxc+MVxLKB4z00jd1z+Dvzr47oO32F/QSNjSBOlFxI=
+github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde h1:x0TT0RDC7UhAVbbWWBzr41ElhJx5tXPWkIHA2HWPRuw=
+github.com/orisano/pixelmatch v0.0.0-20220722002657-fb0b55479cde/go.mod h1:nZgzbfBr3hhjoZnS66nKrHmduYNpc34ny7RK4z5/HM0=
+github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
+go.uber.org/multierr v1.10.0 h1:S0h4aNzvfcFsC3dRF1jLoaov7oRaKqRGC/pUEJ2yvPQ=
+go.uber.org/multierr v1.10.0/go.mod h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=
+go.uber.org/zap v1.27.1 h1:08RqriUEv8+ArZRYSTXy1LeBScaMpVSTBhCeaZYfMYc=
+go.uber.org/zap v1.27.1/go.mod h1:GB2qFLM7cTU87MWRP2mPIjqfIDnGu+VIO4V/SdhGo2E=
+golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
+golang.org/x/crypto v0.0.0-20210921155107-089bfa567519/go.mod h1:GvvjBRRGRdwPK5ydBHafDWAxML/pGHZbMvKqRZ5+Abc=
+golang.org/x/crypto v0.13.0/go.mod h1:y6Z2r+Rw4iayiXXAIxJIDAJ1zMW4yaTpebo8fPOliYc=
+golang.org/x/crypto v0.19.0/go.mod h1:Iy9bg/ha4yyC70EfRS8jz+B6ybOBKMaSxLj6P6oBDfU=
+golang.org/x/crypto v0.23.0/go.mod h1:CKFgDieR+mRhux2Lsu27y0fO304Db0wZe70UKqHu0v8=
+golang.org/x/crypto v0.31.0/go.mod h1:kDsLvtWBEx7MV9tJOj9bnXsPbxwJQ6csT/x4KIN4Ssk=
+golang.org/x/crypto v0.46.0 h1:cKRW/pmt1pKAfetfu+RCEvjvZkA9RimPbh7bhFjGVBU=
+golang.org/x/crypto v0.46.0/go.mod h1:Evb/oLKmMraqjZ2iQTwDwvCtJkczlDuTmdJXoZVzqU0=
+golang.org/x/mod v0.6.0-dev.0.20220419223038-86c51ed26bb4/go.mod h1:jJ57K6gSWd91VN4djpZkiMVwK6gcyfeH4XE8wZrZaV4=
+golang.org/x/mod v0.8.0/go.mod h1:iBbtSCu2XBx23ZKBPSOrRkjjQPZFPuis4dIYUhu/chs=
+golang.org/x/mod v0.12.0/go.mod h1:iBbtSCu2XBx23ZKBPSOrRkjjQPZFPuis4dIYUhu/chs=
+golang.org/x/mod v0.15.0/go.mod h1:hTbmBsO62+eylJbnUtE2MGJUyE7QWk4xUqPFrRgJ+7c=
+golang.org/x/mod v0.17.0/go.mod h1:hTbmBsO62+eylJbnUtE2MGJUyE7QWk4xUqPFrRgJ+7c=
+golang.org/x/net v0.0.0-20190620200207-3b0461eec859/go.mod h1:z5CRVTTTmAJ677TzLLGU+0bjPO0LkuOLi4/5GtJWs/s=
+golang.org/x/net v0.0.0-20210226172049-e18ecbb05110/go.mod h1:m0MpNAwzfU5UDzcl9v0D8zg8gWTRqZa9RBIspLL5mdg=
+golang.org/x/net v0.0.0-20220722155237-a158d28d115b/go.mod h1:XRhObCWvk6IyKnWLug+ECip1KBveYUHfp+8e9klMJ9c=
+golang.org/x/net v0.6.0/go.mod h1:2Tu9+aMcznHK/AK1HMvgo6xiTLG5rD5rZLDS+rp2Bjs=
+golang.org/x/net v0.10.0/go.mod h1:0qNGK6F8kojg2nk9dLZ2mShWaEBan6FAoqfSigmmuDg=
+golang.org/x/net v0.15.0/go.mod h1:idbUs1IY1+zTqbi8yxTbhexhEEk5ur9LInksu6HrEpk=
+golang.org/x/net v0.21.0/go.mod h1:bIjVDfnllIU7BJ2DNgfnXvpSvtn8VRwhlsaeUTyUS44=
+golang.org/x/net v0.25.0/go.mod h1:JkAGAh7GEvH74S6FOH42FLoXpXbE/aqXSrIQjXgsiwM=
+golang.org/x/net v0.33.0/go.mod h1:HXLR5J+9DxmrqMwG9qjGCxZ+zKXxBru04zlTvWlWuN4=
+golang.org/x/net v0.47.0 h1:Mx+4dIFzqraBXUugkia1OOvlD6LemFo1ALMHjrXDOhY=
+golang.org/x/net v0.47.0/go.mod h1:/jNxtkgq5yWUGYkaZGqo27cfGZ1c5Nen03aYrrKpVRU=
+golang.org/x/sync v0.0.0-20190423024810-112230192c58/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.1.0/go.mod h1:RxMgew5VJxzue5/jJTE5uejpjVlOe/izrB70Jof72aM=
+golang.org/x/sync v0.3.0/go.mod h1:FU7BRWz2tNW+3quACPkgCx/L+uEAv1htQ0V83Z9Rj+Y=
+golang.org/x/sync v0.6.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sync v0.7.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sync v0.10.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
+golang.org/x/sys v0.0.0-20190215142949-d0b11bdaac8a/go.mod h1:STP8DvDyc/dI5b8T5hshtkjS+E42TnysNCUPdjciGhY=
+golang.org/x/sys v0.0.0-20201119102817-f84b799fce68/go.mod h1:h1NjWce9XRLGQEsW7wpKNCjG9DtNlClVuFLEZdDNbEs=
+golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.5.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.6.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.8.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.12.0/go.mod h1:oPkhp1MJrh7nUepCBck5+mAzfO9JrbApNNgaTdGDITg=
+golang.org/x/sys v0.17.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.20.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.28.0/go.mod h1:/VUhepiaJMQUp4+oa/7Zr1D23ma6VTLIYjOOTFZPUcA=
+golang.org/x/sys v0.38.0 h1:3yZWxaJjBmCWXqhN1qh02AkOnCQ1poK6oF+a7xWL6Gc=
+golang.org/x/sys v0.38.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/sys v0.39.0 h1:CvCKL8MeisomCi6qNZ+wbb0DN9E5AATixKsvNtMoMFk=
+golang.org/x/sys v0.39.0/go.mod h1:OgkHotnGiDImocRcuBABYBEXf8A9a87e/uXjp9XT3ks=
+golang.org/x/telemetry v0.0.0-20240228155512-f48c80bd79b2/go.mod h1:TeRTkGYfJXctD9OcfyVLyj2J3IxLnKwHJR8f4D8a3YE=
+golang.org/x/term v0.0.0-20201126162022-7de9c90e9dd1/go.mod h1:bj7SfCRtBDWHUb9snDiAeCFNEtKQo2Wmx5Cou7ajbmo=
+golang.org/x/term v0.0.0-20210927222741-03fcf44c2211/go.mod h1:jbD1KX2456YbFQfuXm/mYQcufACuNUgVhRMnK/tPxf8=
+golang.org/x/term v0.5.0/go.mod h1:jMB1sMXY+tzblOD4FWmEbocvup2/aLOaQEp7JmGp78k=
+golang.org/x/term v0.8.0/go.mod h1:xPskH00ivmX89bAKVGSKKtLOWNx2+17Eiy94tnKShWo=
+golang.org/x/term v0.12.0/go.mod h1:owVbMEjm3cBLCHdkQu9b1opXd4ETQWc3BhuQGKgXgvU=
+golang.org/x/term v0.17.0/go.mod h1:lLRBjIVuehSbZlaOtGMbcMncT+aqLLLmKrsjNrUguwk=
+golang.org/x/term v0.20.0/go.mod h1:8UkIAJTvZgivsXaD6/pH6U9ecQzZ45awqEOzuCvwpFY=
+golang.org/x/term v0.27.0/go.mod h1:iMsnZpn0cago0GOrHO2+Y7u7JPn5AylBrcoWkElMTSM=
+golang.org/x/text v0.3.0/go.mod h1:NqM8EUOU14njkJ3fqMW+pc6Ldnwhi/IjpwHt7yyuwOQ=
+golang.org/x/text v0.3.3/go.mod h1:5Zoc/QRtKVWzQhOtBMvqHzDpF6irO9z98xDceosuGiQ=
+golang.org/x/text v0.3.7/go.mod h1:u+2+/6zg+i71rQMx5EYifcz6MCKuco9NR6JIITiCfzQ=
+golang.org/x/text v0.7.0/go.mod h1:mrYo+phRRbMaCq/xk9113O4dZlRixOauAjOtrjsXDZ8=
+golang.org/x/text v0.9.0/go.mod h1:e1OnstbJyHTd6l/uOt8jFFHp6TRDWZR/bV3emEE/zU8=
+golang.org/x/text v0.13.0/go.mod h1:TvPlkZtksWOMsz7fbANvkp4WM8x/WCo/om8BMLbz+aE=
+golang.org/x/text v0.14.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+golang.org/x/text v0.15.0/go.mod h1:18ZOQIKpY8NJVqYksKHtTdi31H5itFRjB5/qKTNYzSU=
+golang.org/x/text v0.21.0/go.mod h1:4IBbMaMmOPCJ8SecivzSH54+73PCFmPWxNTLm+vZkEQ=
+golang.org/x/text v0.32.0 h1:ZD01bjUt1FQ9WJ0ClOL5vxgxOI/sVCNgX1YtKwcY0mU=
+golang.org/x/text v0.32.0/go.mod h1:o/rUWzghvpD5TXrTIBuJU77MTaN0ljMWE47kxGJQ7jY=
+golang.org/x/tools v0.0.0-20180917221912-90fa682c2a6e/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20191119224855-298f0cb1881e/go.mod h1:b+2E5dAYhXwXZwtnZ6UAqBI28+e2cm9otk0dWdXHAEo=
+golang.org/x/tools v0.1.12/go.mod h1:hNGJHUnrk76NpqgfD5Aqm5Crs+Hm0VOH/i9J2+nxYbc=
+golang.org/x/tools v0.6.0/go.mod h1:Xwgl3UAJ/d3gWutnCtw505GrjyAbvKui8lOU390QaIU=
+golang.org/x/tools v0.13.0/go.mod h1:HvlwmtVNQAhOuCjW7xxvovg8wbNq7LwfXh/k7wXUl58=
+golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d/go.mod h1:aiJjzUbINMkxbQROHiO6hDPo2LHcIPhhQsa9DLh0yGk=
+golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=
+----- End of ./go.sum -----
+
+
+----- Start of ./go.mod -----
+module github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service
+
+go 1.25.4
+
+require (
+	github.com/PuerkitoBio/goquery v1.11.0
+	github.com/chromedp/chromedp v0.14.2
+)
+
+require (
+	github.com/gabriel-vasile/mimetype v1.4.12 // indirect
+	github.com/go-playground/locales v0.14.1 // indirect
+	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/leodido/go-urn v1.4.0 // indirect
+	go.uber.org/multierr v1.10.0 // indirect
+	golang.org/x/crypto v0.46.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
+)
+
+require (
+	github.com/andybalholm/cascadia v1.3.3 // indirect
+	github.com/chromedp/cdproto v0.0.0-20250724212937-08a3db8b4327 // indirect
+	github.com/chromedp/sysutil v1.1.0 // indirect
+	github.com/go-json-experiment/json v0.0.0-20250725192818-e39067aee2d2 // indirect
+	github.com/go-playground/validator/v10 v10.30.1
+	github.com/gobwas/httphead v0.1.0 // indirect
+	github.com/gobwas/pool v0.2.1 // indirect
+	github.com/gobwas/ws v1.4.0 // indirect
+	go.uber.org/zap v1.27.1
+	golang.org/x/net v0.47.0 // indirect
+	golang.org/x/sys v0.39.0 // indirect
+)
+----- End of ./go.mod -----
+

@@ -1,9 +1,9 @@
 package domain
 
 type Query struct {
-	Selector string
-	Label    string
-	All      bool
+	Selector string `json:"selector" validate:"required"`
+	Label    string `json:"label" validate:"required"`
+	All      bool   `json:"all" validate:"required"`
 }
 
 func (q *Query) Select(document Document) *Result {

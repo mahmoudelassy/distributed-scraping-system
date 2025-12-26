@@ -1,6 +1,7 @@
-package scraper
+package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
 	scrape "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
 )
 
 func main() {
@@ -23,10 +25,14 @@ func main() {
 		Parser:  &goquery.Parser{},
 		Logger:  zLogger,
 	}
+	ctx := context.Background()
+	ctx = context.WithValue(ctx, ctxmeta.JobIDKey, "1")
+	ctx = context.WithValue(ctx, ctxmeta.UserIDKey, "2")
+	ctx = context.WithValue(ctx, ctxmeta.CorrelationIDKey, "3")
 	for i := range 10 {
 		go func() {
 			fmt.Println(i)
-			results, _ := s.Scrape(
+			results, _ := s.Scrape(ctx,
 				"https://wuzzuf.net/a/IT-Software-Development-Jobs-in-Egypt?ref=browse-jobs",
 				[]domain.Query{{Selector: "#app > div > div > div > div > div > div > div > div > h2 > a", All: false}}, nil)
 			for _, res := range results {

@@ -10,9 +10,9 @@ const (
 )
 
 type JobMetadata struct {
-	JobID         string
-	UserID        string
-	CorrelationID string
+	JobID         string `json:"job_id" validate:"required"`
+	UserID        string `json:"user_id" validate:"required"`
+	CorrelationID string `json:"correlation_id" validate:"required"`
 }
 
 type JobConfig struct {

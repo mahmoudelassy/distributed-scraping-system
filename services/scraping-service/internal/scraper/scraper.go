@@ -1,13 +1,14 @@
 package scraper
 
 import (
+	"context"
 	"time"
 
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/contracts"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/utils"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/worker"
 )
 
 type Scraper struct {
@@ -19,18 +20,12 @@ type Scraper struct {
 type ScraperOptions struct {
 	Retries int
 	Delay   time.Duration
-	Ctx     *worker.JobMetadata
 }
 
-func (s *Scraper) initDocument(url string, opts *ScraperOptions) (domain.Document, error) {
-	opts = s.ensureOptions(opts)
+func (s *Scraper) initDocument(ctx context.Context, url string, opts ScraperOptions) (domain.Document, error) {
 
-	meta := map[string]interface{}{
-		"url":            url,
-		"job_id":         opts.Ctx.JobID,
-		"correlation_id": opts.Ctx.CorrelationID,
-		"user_id":        opts.Ctx.UserID,
-	}
+	meta := ctxmeta.FromContext(ctx)
+	meta["url"] = url
 
 	s.Logger.Info(
 		"starting fetch",
@@ -76,20 +71,21 @@ func (s *Scraper) initDocument(url string, opts *ScraperOptions) (domain.Documen
 	return doc, nil
 }
 
-func (s *Scraper) Scrape(url string, queries []domain.Query, opts *ScraperOptions) ([]*domain.Result, error) {
-	opts = s.ensureOptions(opts)
-
-	meta := map[string]interface{}{
-		"url":            url,
-		"job_id":         opts.Ctx.JobID,
-		"correlation_id": opts.Ctx.CorrelationID,
-		"user_id":        opts.Ctx.UserID,
-		"num_queries":    len(queries),
+func (s *Scraper) Scrape(ctx context.Context, url string, queries []domain.Query, opts *ScraperOptions) ([]*domain.Result, error) {
+	if opts == nil {
+		opts = DefaultScraperOptions()
 	}
 
-	s.Logger.Info("starting scrape", logging.Field{Key: "meta", Value: meta})
+	meta := ctxmeta.FromContext(ctx)
+	meta["url"] = url
+	meta["num_queries"] = len(queries)
 
-	doc, err := s.initDocument(url, opts)
+	s.Logger.Info(
+		"starting scrape",
+		logging.Field{Key: "meta", Value: meta},
+	)
+
+	doc, err := s.initDocument(ctx, url, *opts)
 	if err != nil {
 		s.Logger.Error(
 			"scrape failed",
@@ -99,15 +95,24 @@ func (s *Scraper) Scrape(url string, queries []domain.Query, opts *ScraperOption
 		return nil, err
 	}
 
-	results := s.executeQueries(doc, queries, meta)
+	results := s.executeQueries(ctx, doc, queries)
 
-	s.Logger.Info("scrape completed", logging.Field{Key: "meta", Value: meta})
+	s.Logger.Info(
+		"scrape completed",
+		logging.Field{Key: "meta", Value: meta},
+	)
 
 	return results, nil
 }
 
-func (s *Scraper) executeQueries(doc domain.Document, queries []domain.Query, meta map[string]interface{}) []*domain.Result {
+func (s *Scraper) executeQueries(
+	ctx context.Context,
+	doc domain.Document,
+	queries []domain.Query,
+) []*domain.Result {
+
 	results := make([]*domain.Result, 0, len(queries))
+	meta := ctxmeta.FromContext(ctx)
 
 	for _, query := range queries {
 		result := query.Select(doc)
@@ -125,22 +130,9 @@ func (s *Scraper) executeQueries(doc domain.Document, queries []domain.Query, me
 	return results
 }
 
-func (s *Scraper) ensureOptions(opts *ScraperOptions) *ScraperOptions {
-	if opts == nil {
-		opts = &ScraperOptions{}
+func DefaultScraperOptions() *ScraperOptions {
+	return &ScraperOptions{
+		Retries: 3,
+		Delay:   200 * time.Millisecond,
 	}
-
-	if opts.Ctx == nil {
-		opts.Ctx = &worker.JobMetadata{}
-	}
-
-	if opts.Retries == 0 {
-		opts.Retries = 3
-	}
-
-	if opts.Delay == 0 {
-		opts.Delay = 200 * time.Millisecond
-	}
-
-	return opts
 }
