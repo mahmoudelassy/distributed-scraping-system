@@ -7,22 +7,28 @@ type Query struct {
 }
 
 func (q *Query) Select(document Document) *Result {
-	result := Result{
-		Query:    q,
-		Elements: nil,
+	result := &Result{
+		Query:  q,
+		Status: QuerySuccess,
 	}
 
 	if q.All {
-		result.Elements = document.GetAll(q.Selector)
-		return &result
+		elements, err := document.GetAll(q.Selector)
+		if err != nil {
+			result.Status = QueryFailed
+			return result
+		}
+
+		result.Elements = elements
+		return result
 	}
 
 	el, err := document.Get(q.Selector)
 	if err != nil {
-		result.status = ""
-		return &result
+		result.Status = QueryFailed
+		return result
 	}
 
-	result.Elements = append(result.Elements, el)
-	return &result
+	result.Elements = []HTMLElement{el}
+	return result
 }

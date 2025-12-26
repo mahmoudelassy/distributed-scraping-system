@@ -11,14 +11,12 @@ type WorkerValidator struct {
 	validator *validator.Validate
 }
 
-// NewWorkerValidator creates a new validator with custom rules registered
 func NewWorkerValidator() *WorkerValidator {
 	v := validator.New()
 
-	// Custom validation for PageType
-	v.RegisterValidation("page_type", func(fl validator.FieldLevel) bool {
+	v.RegisterValidation("fetcher", func(fl validator.FieldLevel) bool {
 		val := fl.Field().String()
-		return val == "static" || val == "dynamic"
+		return val == "http" || val == "chromedp"
 	})
 
 	return &WorkerValidator{validator: v}
