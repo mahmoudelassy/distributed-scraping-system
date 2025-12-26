@@ -25,12 +25,8 @@ func (q *Query) Select(document Document) *Result {
 
 	el, err := document.Get(q.Selector)
 	if err != nil {
-<<<<<<< Updated upstream
-		return &result
-=======
 		result.Status = QueryFailed
 		return result
->>>>>>> Stashed changes
 	}
 
 	result.Elements = []HTMLElement{el}

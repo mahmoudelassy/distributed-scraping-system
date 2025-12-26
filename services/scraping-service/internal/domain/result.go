@@ -10,8 +10,5 @@ const (
 type Result struct {
 	Query    *Query
 	Elements []HTMLElement
-<<<<<<< Updated upstream
-=======
 	Status   QueryStatus
->>>>>>> Stashed changes
 }

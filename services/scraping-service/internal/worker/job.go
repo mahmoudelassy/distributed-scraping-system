@@ -15,14 +15,6 @@ type JobMetadata struct {
 	CorrelationID string
 }
 
-<<<<<<< Updated upstream
-type Job struct {
-	Metadata JobMetadata
-	URL      string
-	PageType string
-	Label    string
-	Queries  []domain.Query
-=======
 type JobConfig struct {
 	URL        string `json:"url" validate:"required,url"`
 	Fetcher    string `json:"fetcher" validate:"required,fetcher"`
@@ -39,5 +31,4 @@ type JobResult struct {
 	Config   *JobConfig
 	Status   JobStatus
 	Results  []domain.Result
->>>>>>> Stashed changes
 }
