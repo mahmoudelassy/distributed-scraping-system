@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/contracts"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
@@ -28,75 +29,107 @@ func NewScrapingService(
 	}
 }
 
-func (s *ScrapingService) Process(req ScrapeRequest) ScrapeResponse {
+func (s *ScrapingService) ProcessMessage(msg ScrapeJobMessage) ScrapeResultMessage {
 	startTime := time.Now()
 
-	s.logger.Info("processing scrape request",
-		logging.Field{Key: "url", Value: req.URL},
-		logging.Field{Key: "fetcher", Value: req.Fetcher})
+	s.logger.Info("processing scrape job",
+		logging.Field{Key: "job_id", Value: msg.JobID},
+		logging.Field{Key: "url", Value: msg.URL},
+		logging.Field{Key: "fetcher", Value: msg.Fetcher})
 
 	// Select fetcher
-	fetcher, err := s.fetcherFactory.GetFetcher(req.Fetcher)
+	fetcher, err := s.fetcherFactory.GetFetcher(msg.Fetcher)
 	if err != nil {
-		return s.errorResponse(req, err, startTime)
+		return s.buildErrorResponse(msg, err, startTime)
 	}
 
-	// Create scraper with selected fetcher
+	// Create scraper
 	scraperInstance := &scraper.Scraper{
 		Fetcher: fetcher,
 		Parser:  s.parser,
 		Logger:  s.logger,
 	}
 
-	// Convert DTOs to internal types
-	queries := ToInternalQueries(req.Queries)
+	// Convert to internal types
+	queries := ToInternalQueries(msg.Queries)
 
 	// Create context with metadata
 	ctx := ctxmeta.WithJobMetadata(
 		context.Background(),
-		req.Metadata.JobID,
-		req.Metadata.UserID,
-		req.Metadata.CorrelationID,
+		msg.JobID,
+		msg.UserID,
+		msg.CorrelationID,
 	)
 
 	// Execute scraping
-	results, err := scraperInstance.Scrape(ctx, req.URL, queries, nil)
+	results, err := scraperInstance.Scrape(ctx, msg.URL, queries, nil)
 	if err != nil {
-		return s.errorResponse(req, err, startTime)
+		return s.buildErrorResponse(msg, err, startTime)
 	}
 
-	// Convert results to DTOs
+	// Build success response
+	return s.buildSuccessResponse(msg, results, startTime)
+}
+
+// Build success response preserving request context
+func (s *ScrapingService) buildSuccessResponse(msg ScrapeJobMessage, results []*domain.Result, startTime time.Time) ScrapeResultMessage {
+	duration := time.Since(startTime)
 	resultDTOs := ToResultDTOs(results)
 
-	duration := time.Since(startTime)
-
-	s.logger.Info("scrape request completed",
+	s.logger.Info("scrape job completed successfully",
+		logging.Field{Key: "job_id", Value: msg.JobID},
 		logging.Field{Key: "duration_ms", Value: duration.Milliseconds()},
 		logging.Field{Key: "result_count", Value: len(resultDTOs)})
 
-	return ScrapeResponse{
-		Success:    true,
-		Metadata:   req.Metadata,
-		Results:    resultDTOs,
-		Error:      nil,
-		DurationMS: duration.Milliseconds(),
-		Timestamp:  time.Now(),
+	return ScrapeResultMessage{
+		// Preserve original request context
+		JobID:         msg.JobID,
+		UserID:        msg.UserID,
+		CorrelationID: msg.CorrelationID,
+		RequestedAt:   msg.RequestedAt,
+		URL:           msg.URL,
+		GroupLabel:    msg.GroupLabel,
+
+		// Processing metadata
+		Status:      "SUCCESS",
+		ProcessedAt: time.Now(),
+		DurationMS:  duration.Milliseconds(),
+
+		// Results
+		Results: resultDTOs,
+		Error:   nil,
 	}
 }
 
-func (s *ScrapingService) errorResponse(req ScrapeRequest, err error, startTime time.Time) ScrapeResponse {
+// Build error response preserving request context
+func (s *ScrapingService) buildErrorResponse(
+	msg ScrapeJobMessage,
+	err error,
+	startTime time.Time,
+) ScrapeResultMessage {
 	duration := time.Since(startTime)
 
-	s.logger.Error("scrape request failed",
+	s.logger.Error("scrape job failed",
+		logging.Field{Key: "job_id", Value: msg.JobID},
 		logging.Field{Key: "error", Value: err.Error()},
 		logging.Field{Key: "duration_ms", Value: duration.Milliseconds()})
 
-	return ScrapeResponse{
-		Success:    false,
-		Metadata:   req.Metadata,
-		Results:    nil,
-		Error:      ToErrorDTO(err),
-		DurationMS: duration.Milliseconds(),
-		Timestamp:  time.Now(),
+	return ScrapeResultMessage{
+		// Preserve original request context
+		JobID:         msg.JobID,
+		UserID:        msg.UserID,
+		CorrelationID: msg.CorrelationID,
+		RequestedAt:   msg.RequestedAt,
+		URL:           msg.URL,
+		GroupLabel:    msg.GroupLabel,
+
+		// Processing metadata
+		Status:      "FAILED",
+		ProcessedAt: time.Now(),
+		DurationMS:  duration.Milliseconds(),
+
+		// Error
+		Results: nil,
+		Error:   ToErrorDTO(err),
 	}
 }
