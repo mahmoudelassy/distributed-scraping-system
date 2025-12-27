@@ -2,33 +2,37 @@ package service
 
 import (
 	"time"
-
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/worker"
 )
 
-// Request from queue
-type ScrapeRequest struct {
-	Metadata   worker.JobMetadata `json:"metadata"`
-	URL        string             `json:"url"`
-	Fetcher    string             `json:"fetcher"` // "http" or "chromedp"
-	GroupLabel string
-	Queries    []QueryDTO `json:"queries"`
+type ScrapeJobMessage struct {
+	JobID         string     `json:"job_id"`
+	UserID        string     `json:"user_id"`
+	CorrelationID string     `json:"correlation_id"`
+	RequestedAt   time.Time  `json:"requested_at"`
+	URL           string     `json:"url"`
+	Fetcher       string     `json:"fetcher"`
+	GroupLabel    string     `json:"group_label"`
+	Queries       []QueryDTO `json:"queries"`
+}
+
+type ScrapeResultMessage struct {
+	JobID         string      `json:"job_id"`
+	UserID        string      `json:"user_id"`
+	CorrelationID string      `json:"correlation_id"`
+	RequestedAt   time.Time   `json:"requested_at"`
+	URL           string      `json:"url"`
+	GroupLabel    string      `json:"group_label"`
+	Status        string      `json:"status"` // "SUCCESS" | "FAILED"
+	ProcessedAt   time.Time   `json:"processed_at"`
+	DurationMS    int64       `json:"duration_ms"`
+	Results       []ResultDTO `json:"results,omitempty"`
+	Error         *ErrorDTO   `json:"error,omitempty"`
 }
 
 type QueryDTO struct {
 	Selector string `json:"selector"`
 	Label    string `json:"label"`
 	All      bool   `json:"all"`
-}
-
-// Response to queue
-type ScrapeResponse struct {
-	Success    bool               `json:"success"`
-	Metadata   worker.JobMetadata `json:"metadata"`
-	Results    []ResultDTO        `json:"results,omitempty"`
-	Error      *ErrorDTO          `json:"error,omitempty"`
-	DurationMS int64              `json:"duration_ms"`
-	Timestamp  time.Time          `json:"timestamp"`
 }
 
 type ResultDTO struct {
