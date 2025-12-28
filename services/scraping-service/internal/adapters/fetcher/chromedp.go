@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/chromedp/chromedp"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/core/html"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 )
 
 type ChromeDPFetcher struct {
@@ -14,18 +14,8 @@ type ChromeDPFetcher struct {
 	timeout      time.Duration
 }
 
-func NewChromeDPFetcher(headless bool, timeout time.Duration) (*ChromeDPFetcher, error) {
-	chromedp.ExecPath("/snap/bin/chromium")
-	opts := append(
-		chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", headless),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-		chromedp.Flag("disable-dev-shm-usage", true),
-	)
-
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-
+func NewChromeDPFetcherRemote(wsURL string, timeout time.Duration) (*ChromeDPFetcher, error) {
+	allocCtx, cancel := chromedp.NewRemoteAllocator(context.Background(), wsURL)
 	return &ChromeDPFetcher{
 		allocatorCtx: allocCtx,
 		cancel:       cancel,
@@ -33,7 +23,7 @@ func NewChromeDPFetcher(headless bool, timeout time.Duration) (*ChromeDPFetcher,
 	}, nil
 }
 
-func (f *ChromeDPFetcher) Fetch(url string) (*html.Page, error) {
+func (f *ChromeDPFetcher) Fetch(url string) (*domain.Page, error) {
 	ctx, cancel := chromedp.NewContext(f.allocatorCtx)
 	defer cancel()
 
@@ -52,7 +42,7 @@ func (f *ChromeDPFetcher) Fetch(url string) (*html.Page, error) {
 		return nil, err
 	}
 
-	return &html.Page{
+	return &domain.Page{
 		URL:    url,
 		Source: &source,
 	}, nil
