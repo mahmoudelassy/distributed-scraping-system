@@ -33,9 +33,7 @@ func (s *ScrapingService) ProcessMessage(msg ScrapeJobMessage) ScrapeResultMessa
 	startTime := time.Now()
 
 	s.logger.Info("processing scrape job",
-		logging.Field{Key: "job_id", Value: msg.JobID},
-		logging.Field{Key: "url", Value: msg.URL},
-		logging.Field{Key: "fetcher", Value: msg.Fetcher})
+		logging.Field{Key: "job", Value: msg})
 
 	// Select fetcher
 	fetcher, err := s.fetcherFactory.GetFetcher(msg.Fetcher)
@@ -76,12 +74,7 @@ func (s *ScrapingService) buildSuccessResponse(msg ScrapeJobMessage, results []*
 	duration := time.Since(startTime)
 	resultDTOs := ToResultDTOs(results)
 
-	s.logger.Info("scrape job completed successfully",
-		logging.Field{Key: "job_id", Value: msg.JobID},
-		logging.Field{Key: "duration_ms", Value: duration.Milliseconds()},
-		logging.Field{Key: "result_count", Value: len(resultDTOs)})
-
-	return ScrapeResultMessage{
+	res := ScrapeResultMessage{
 		// Preserve original request context
 		JobID:         msg.JobID,
 		UserID:        msg.UserID,
@@ -91,7 +84,7 @@ func (s *ScrapingService) buildSuccessResponse(msg ScrapeJobMessage, results []*
 		GroupLabel:    msg.GroupLabel,
 
 		// Processing metadata
-		Status:      "SUCCESS",
+		Status:      "COMPLETED",
 		ProcessedAt: time.Now(),
 		DurationMS:  duration.Milliseconds(),
 
@@ -99,6 +92,11 @@ func (s *ScrapingService) buildSuccessResponse(msg ScrapeJobMessage, results []*
 		Results: resultDTOs,
 		Error:   nil,
 	}
+	s.logger.Info("scrape job completed successfully",
+		logging.Field{Key: "job", Value: msg},
+		logging.Field{Key: "result", Value: res})
+
+	return res
 }
 
 // Build error response preserving request context
@@ -109,12 +107,7 @@ func (s *ScrapingService) buildErrorResponse(
 ) ScrapeResultMessage {
 	duration := time.Since(startTime)
 
-	s.logger.Error("scrape job failed",
-		logging.Field{Key: "job_id", Value: msg.JobID},
-		logging.Field{Key: "error", Value: err.Error()},
-		logging.Field{Key: "duration_ms", Value: duration.Milliseconds()})
-
-	return ScrapeResultMessage{
+	res := ScrapeResultMessage{
 		// Preserve original request context
 		JobID:         msg.JobID,
 		UserID:        msg.UserID,
@@ -132,4 +125,9 @@ func (s *ScrapingService) buildErrorResponse(
 		Results: nil,
 		Error:   ToErrorDTO(err),
 	}
+	s.logger.Error("scrape job failed",
+		logging.Field{Key: "job", Value: msg},
+		logging.Field{Key: "result", Value: res})
+
+	return res
 }

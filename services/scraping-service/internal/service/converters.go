@@ -32,7 +32,7 @@ func ToResultDTO(result *domain.Result) ResultDTO {
 	return ResultDTO{
 		Selector: result.Query.Selector,
 		Label:    result.Query.Label,
-		Success:  result.Status == domain.QuerySuccess,
+		Status:   string(result.Status),
 		Elements: elements,
 	}
 }
