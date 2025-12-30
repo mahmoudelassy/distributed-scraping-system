@@ -1,47 +1,53 @@
 package main
 
 import (
-	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/adapters/fetcher"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/adapters/parser/goquery"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/domain"
 	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/logging"
-	scrape "github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper"
-	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/scraper/ctxmeta"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/service"
+	"github.com/mahmoudelassy/distributed-scraping-system/services/scraping-service/internal/worker"
 )
 
 func main() {
-	zLogger, err := logging.NewZapLogger()
-	if err != nil {
-		panic(err) // handle error properly in production
+	zLogger, _ := logging.NewZapLogger()
+	c, _ := fetcher.NewChromeDPFetcherRemote("http://localhost:9222", 4*30*time.Second)
+	h := &fetcher.HTTPStaticFetcher{
+		Client: http.DefaultClient,
 	}
-	f, _ := fetcher.NewChromeDPFetcherRemote("http://localhost:9222", 4*30*time.Second)
+	ff := service.NewFetcherFactory(h, c)
 
-	s := scrape.Scraper{
-		Fetcher: f,
-		Parser:  &goquery.Parser{},
-		Logger:  zLogger,
+	svc := service.NewScrapingService(ff, &goquery.Parser{}, zLogger)
+
+	w := worker.NewWorker(svc, zLogger)
+
+	jsonData := []byte(`{
+  "job_id": "job-123",
+  "user_id": "user-456",
+  "correlation_id": "corr-789",
+  "requested_at": "2025-01-01T12:00:00Z",
+  "url": "https://wuzzuf.net/a/IT-Software-Development-Jobs-in-Egypt?ref=browse-jobs",
+  "fetcher": "http",
+  "group_label": "wuzzuf-jobs",
+  "queries": [
+    {
+      "selector": "#app > div > div > div > div > div > div > div > div > h2 > a",
+      "label": "wuzzuf_link",
+	  "all":false
+    }
+  ]
+}`)
+
+	var msg service.ScrapeJobMessage
+	err := json.Unmarshal(jsonData, &msg)
+	if err != nil {
+		fmt.Println(err)
 	}
-	ctx := context.Background()
-	ctx = context.WithValue(ctx, ctxmeta.JobIDKey, "1")
-	ctx = context.WithValue(ctx, ctxmeta.UserIDKey, "2")
-	ctx = context.WithValue(ctx, ctxmeta.CorrelationIDKey, "3")
-	for i := range 10 {
-		go func() {
-			fmt.Println(i)
-			results, _ := s.Scrape(ctx,
-				"https://wuzzuf.net/a/IT-Software-Development-Jobs-in-Egypt?ref=browse-jobs",
-				[]domain.Query{{Selector: "#app > div > div > div > div > div > div > div > div > h2 > a", All: false}}, nil)
-			for _, res := range results {
-				for _, el := range res.Elements {
-					fmt.Println(el.GetText())
-				}
-			}
-		}()
-	}
-	time.Sleep(60 * time.Second)
+
+	w.ProcessMessage(msg)
 
 }
