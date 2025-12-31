@@ -21,14 +21,13 @@ func NewWorker(svc *service.ScrapingService, logger logging.Logger,
 }
 
 func (w *Worker) ProcessMessage(msg service.ScrapeJobMessage) service.ScrapeResultMessage {
-	w.logger.Info("received scrape job from Kafka",
-		logging.Field{Key: "job_id", Value: msg.JobID})
+	w.logger.Info("received scrape job",
+		logging.Field{Key: "job", Value: msg})
 
 	// Validate
 	if err := w.validator.ValidateJobMessage(msg); err != nil {
 		w.logger.Error("job validation failed",
-			logging.Field{Key: "job_id", Value: msg.JobID},
-			logging.Field{Key: "error", Value: err})
+			logging.Field{Key: "job", Value: msg})
 
 		// Return error response
 		return service.ScrapeResultMessage{

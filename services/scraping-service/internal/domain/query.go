@@ -9,13 +9,13 @@ type Query struct {
 func (q *Query) Select(document Document) *Result {
 	result := &Result{
 		Query:  q,
-		Status: QuerySuccess,
+		Status: QueryMatched,
 	}
 
 	if q.All {
 		elements, err := document.GetAll(q.Selector)
 		if err != nil {
-			result.Status = QueryFailed
+			result.Status = QueryEmpty
 			return result
 		}
 
@@ -25,7 +25,7 @@ func (q *Query) Select(document Document) *Result {
 
 	el, err := document.Get(q.Selector)
 	if err != nil {
-		result.Status = QueryFailed
+		result.Status = QueryEmpty
 		return result
 	}
 

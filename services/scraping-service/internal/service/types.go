@@ -22,7 +22,7 @@ type ScrapeResultMessage struct {
 	RequestedAt   time.Time   `json:"requested_at"`
 	URL           string      `json:"url"`
 	GroupLabel    string      `json:"group_label"`
-	Status        string      `json:"status"` // "SUCCESS" | "FAILED"
+	Status        string      `json:"status"` // "MATCHED" | "EMPTY"
 	ProcessedAt   time.Time   `json:"processed_at"`
 	DurationMS    int64       `json:"duration_ms"`
 	Results       []ResultDTO `json:"results,omitempty"`
@@ -38,7 +38,7 @@ type QueryDTO struct {
 type ResultDTO struct {
 	Selector string       `json:"selector"`
 	Label    string       `json:"label"`
-	Success  bool         `json:"success"`
+	Status   string       `json:"status"`
 	Elements []ElementDTO `json:"elements"`
 }
 

@@ -3,8 +3,8 @@ package domain
 type QueryStatus string
 
 const (
-	QuerySuccess QueryStatus = "SUCCESS"
-	QueryFailed  QueryStatus = "FAILED"
+	QueryMatched QueryStatus = "MATCHED"
+	QueryEmpty   QueryStatus = "EMPTY"
 )
 
 type Result struct {
