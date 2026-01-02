@@ -63,17 +63,3 @@ func (wv *WorkerValidator) ValidateJobMessage(msg service.ScrapeJobMessage) erro
 
 	return nil
 }
-
-// Alternative: Use struct tags if you prefer
-func (wv *WorkerValidator) ValidateJobMessageWithTags(msg service.ScrapeJobMessage) error {
-	err := wv.validator.Struct(msg)
-	if err != nil {
-		// Format validation errors nicely
-		validationErrors := err.(validator.ValidationErrors)
-		for _, e := range validationErrors {
-			fmt.Printf("Field '%s' failed validation rule '%s'\n", e.Field(), e.Tag())
-		}
-		return fmt.Errorf("validation failed: %v", err)
-	}
-	return nil
-}
