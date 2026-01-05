@@ -10,7 +10,7 @@ func NewKafkaPublisher(k *Kafka) (*KafkaPublisher, error) {
 	p, err := kafka.NewProducer(&kafka.ConfigMap{
 		"bootstrap.servers":  k.brokers,
 		"acks":               "all",
-		"enable.idempotence": true, // safe default
+		"enable.idempotence": true,
 	})
 	if err != nil {
 		return nil, err
